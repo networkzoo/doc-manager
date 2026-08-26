@@ -83,14 +83,9 @@ qm set 9000 --cicustom "user=local:snippets/doc-manager-user-data.yaml"
 qm set 9000 --ipconfig0 ip=dhcp   # or ip=10.x.x.x/24,gw=10.x.x.x for static
 ```
 
-## 5. Turn it into a template, then clone the real VM
-
-Keeping 9000 as a reusable template means future VMs (staging, a second
-environment) start from the same base:
+## 5. Clone the real VM
 
 ```bash
-qm template 9000
-
 qm clone 9000 101 --name doc-manager-portal --full
 qm set 101 --memory 8192 --cores 4
 qm resize 101 scsi0 64G
@@ -99,6 +94,16 @@ qm resize 101 scsi0 64G
 Adjust memory/cores/disk to what you actually want to give it — 8GB/4
 cores/64GB is a reasonable pilot-scale starting point for the portal
 container + Postgres (see docs/PLAN.md "Hosting & data residency").
+
+**On NFS-backed storage (e.g. a Synology export), skip `qm template`
+entirely — don't run it before the clone above.** Templating tries to
+`chattr +i` the base disk to protect it, and NFS doesn't support that
+ioctl, so it fails with `command '/usr/bin/chattr +i ...' failed: exit
+code 1`. That step only matters for *linked* clones (space-efficient,
+share blocks with the template); a `--full` clone works from an ordinary
+VM just as well, and NFS with raw disks wouldn't support linked clones
+regardless — so on this storage, templating buys nothing. VM 9000 stays
+a normal (non-templated) VM and clones from it exactly the same way.
 
 ## 6. Boot and connect
 
