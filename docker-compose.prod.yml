@@ -1,0 +1,54 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: law_portal
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: law_portal
+    volumes:
+      - portal_pgdata:/var/lib/postgresql/data
+    # Bound to localhost only — reachable for migrations run from the VM
+    # host (see infra/deploy/README.md), but not from the network. The
+    # `portal` service reaches it over the internal compose network below,
+    # not through this published port.
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U law_portal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  portal:
+    build:
+      context: .
+      dockerfile: apps/portal/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://law_portal:${POSTGRES_PASSWORD}@db:5432/law_portal
+      AUTH_SECRET: ${AUTH_SECRET}
+      AUTH_MICROSOFT_ENTRA_ID_ID: ${AUTH_MICROSOFT_ENTRA_ID_ID:-}
+      AUTH_MICROSOFT_ENTRA_ID_SECRET: ${AUTH_MICROSOFT_ENTRA_ID_SECRET:-}
+      AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID:-}
+      AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET:-}
+    ports:
+      # Matches the ufw allow 3000/tcp opened in
+      # infra/proxmox/cloud-init/user-data.yaml. The Sophos WAF/Cloudflare
+      # proxy is what should actually reach this — see that file's TODO
+      # about tightening the source IPs once your edge is finalized.
+      - "3000:3000"
+    networks:
+      - internal
+
+networks:
+  internal:
+
+volumes:
+  portal_pgdata:

@@ -14,7 +14,11 @@ law firms, backed by each firm's own on-prem SMB file server. See
 - `infra/proxmox` — cloud-init + Proxmox walkthrough for provisioning the
   portal's host VM (docs/PLAN.md "Hosting & data residency": self-hosted on
   the rack, not managed cloud).
+- `infra/deploy` — runbook for deploying the app onto that VM: deploy key,
+  secrets, migrations, `docker-compose.prod.yml`.
 - `docker-compose.yml` — local Postgres for development.
+- `docker-compose.prod.yml` — production stack (Postgres + the portal
+  container) for the rack VM; see `infra/deploy/README.md`.
 
 ## Status
 
