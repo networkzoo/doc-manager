@@ -1,0 +1,19 @@
+{
+  "name": "law-portal",
+  "private": true,
+  "version": "0.0.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.24.0",
+  "scripts": {
+    "dev": "pnpm --filter @law-portal/portal dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "db:generate": "pnpm --filter @law-portal/db generate",
+    "db:migrate": "pnpm --filter @law-portal/db migrate",
+    "db:seed": "pnpm --filter @law-portal/db seed"
+  }
+}
