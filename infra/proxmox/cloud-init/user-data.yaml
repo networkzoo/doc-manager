@@ -1,0 +1,103 @@
+#cloud-config
+# Portal host provisioning — prepares a clean Ubuntu Server LTS VM with
+# Docker, Netbird (admin access only), patching, and basic hardening. Does
+# NOT deploy the app itself — that's a separate step once the VM is up
+# (docker compose against apps/portal/Dockerfile + a real .env). See
+# docs/PLAN.md "Hosting & data residency" and infra/proxmox/README.md for
+# the full VM-creation walkthrough this file plugs into.
+
+hostname: doc-manager-portal
+manage_etc_hosts: true
+timezone: America/Toronto
+
+users:
+  - name: opsadmin
+    groups: [sudo, docker]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+    ssh_authorized_keys:
+      # REPLACE before first boot — password auth is disabled below, so an
+      # unmatched key here means nobody can log in at all.
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAREPLACE_WITH_YOUR_PUBLIC_KEY opsadmin@replace-me
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - ca-certificates
+  - curl
+  - gnupg
+  - ufw
+  - fail2ban
+  - unattended-upgrades
+
+write_files:
+  - path: /etc/apt/apt.conf.d/51-unattended-upgrades-reboot
+    content: |
+      // Reboot automatically for kernel/security updates that require it,
+      // at an hour nobody's using the portal.
+      Unattended-Upgrade::Automatic-Reboot "true";
+      Unattended-Upgrade::Automatic-Reboot-Time "04:00";
+
+  - path: /usr/local/sbin/setup-swap.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      if [ ! -f /swapfile ]; then
+        fallocate -l 4G /swapfile
+        chmod 600 /swapfile
+        mkswap /swapfile
+        swapon /swapfile
+        echo '/swapfile none swap sw 0 0' >> /etc/fstab
+      fi
+
+runcmd:
+  # --- Docker Engine + Compose plugin (official repo, not the Ubuntu
+  # archive's older docker.io package) ---
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  - chmod a+r /etc/apt/keyrings/docker.asc
+  - >
+    echo "deb [arch=$(dpkg --print-architecture)
+    signed-by=/etc/apt/keyrings/docker.asc]
+    https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo
+    $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list
+  - apt-get update
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  - usermod -aG docker opsadmin
+
+  # --- Netbird client (admin access only — see docs/PLAN.md: this VPN
+  # fronts SSH/DB/ops access, never the client-facing portal). Installs the
+  # client but deliberately does NOT join a network here: run
+  #   netbird up --setup-key <key>
+  # by hand after first login, using a key from your Netbird management
+  # console. Never put a setup key in this file — it's committed to git. ---
+  - curl -fsSL https://pkgs.netbird.io/install.sh | sh
+
+  - /usr/local/sbin/setup-swap.sh
+
+  # --- SSH: keys only, no root login ---
+  - sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+  - sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+  - systemctl restart ssh
+
+  # --- Firewall — TODO before this reaches anything but a lab network:
+  # tighten both rules below to your actual LAN/WAF addressing. As shipped,
+  # SSH is open to all of 10.0.0.0/8 (adjust to your real management
+  # subnet) and the app port is open to any source (should be restricted
+  # to the Sophos WAF / Cloudflare egress ranges once that's finalized). ---
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow from 10.0.0.0/8 to any port 22 proto tcp
+  - ufw allow 3000/tcp
+  - ufw --force enable
+
+  - systemctl enable --now unattended-upgrades
+  - systemctl enable --now fail2ban
+
+power_state:
+  mode: reboot
+  message: "Rebooting after initial provisioning"
+  condition: true
