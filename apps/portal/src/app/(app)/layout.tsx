@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { requireSession } from "@/lib/session";
+import { redirect } from "next/navigation";
+import { getSession } from "@/lib/session";
 
 // Every route under this layout is session-gated, so it must never be
 // statically prerendered at build time (Next.js otherwise tries to,
@@ -12,7 +13,15 @@ export const dynamic = "force-dynamic";
 // (no design system yet) — the point of Phase 0/1 is proving the data
 // path works end to end, not the visual layer.
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const session = await requireSession();
+  // getSession(), not requireSession() — a visitor with no session yet is
+  // the ordinary case (first visit, expired cookie), not an error to
+  // crash on. Auth.js's built-in /api/auth/signin page (no custom
+  // pages.signIn configured in lib/auth.ts) lists the configured
+  // providers — good enough until a real sign-in page is designed.
+  const session = await getSession();
+  if (!session) {
+    redirect("/api/auth/signin");
+  }
 
   return (
     <div className="flex min-h-screen flex-col">
