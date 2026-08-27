@@ -10,6 +10,15 @@
 {$PORTAL_DOMAIN} {
 	tls {
 		dns cloudns
+		# ClouDNS runs several authoritative nameservers, and a freshly
+		# API-created record has genuinely taken 30-45s to propagate
+		# across all of them in practice (confirmed via a staging-CA test
+		# issuance) — without a delay, Caddy's own check (and then Let's
+		# Encrypt's) can hit NXDOMAIN against a server that hasn't caught
+		# up yet, even though the record exists. Wait before checking at
+		# all, then allow a generous window for slower propagation.
+		propagation_delay 45s
+		propagation_timeout 5m
 	}
 
 	reverse_proxy portal:3000
