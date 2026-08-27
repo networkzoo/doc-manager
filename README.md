@@ -15,7 +15,8 @@ law firms, backed by each firm's own on-prem SMB file server. See
   portal's host VM (docs/PLAN.md "Hosting & data residency": self-hosted on
   the rack, not managed cloud).
 - `infra/deploy` — runbook for deploying the app onto that VM: deploy key,
-  secrets, migrations, `docker-compose.prod.yml`.
+  secrets, migrations, `docker-compose.prod.yml`. `update.sh` handles
+  every update after the initial setup: pull, migrate, rebuild, restart.
 - `infra/caddy` — custom Caddy build (ClouDNS DNS-01 plugin) fronting the
   portal with real TLS; see `infra/deploy/README.md` step 6.
 - `docker-compose.yml` — local Postgres for development.

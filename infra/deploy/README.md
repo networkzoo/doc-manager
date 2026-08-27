@@ -8,6 +8,21 @@ cloning the private repo, secrets, migrations, and bringing up
 Run everything below **on the VM**, over the SSH session from
 `infra/proxmox/README.md` step 6.
 
+Steps 1-6 below are the one-time initial setup. For every update after
+that, [`infra/deploy/update.sh`](update.sh) does the whole
+pull-migrate-rebuild-restart sequence in one command:
+
+```bash
+./infra/deploy/update.sh
+```
+
+It's deliberately conservative rather than clever: `git pull --ff-only`
+(refuses to run if the local checkout has diverged, rather than silently
+merging), `pnpm db:migrate` before touching containers, then
+`docker compose up -d --build`, then a health check. Stops on the first
+failure (`set -e`) instead of partially applying an update. Safe for
+anyone to run, not just whoever made the change.
+
 ## 1. Deploy key (repo is private)
 
 Generate a keypair on the VM and give it read-only access to just this
