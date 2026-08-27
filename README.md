@@ -16,6 +16,8 @@ law firms, backed by each firm's own on-prem SMB file server. See
   the rack, not managed cloud).
 - `infra/deploy` — runbook for deploying the app onto that VM: deploy key,
   secrets, migrations, `docker-compose.prod.yml`.
+- `infra/caddy` — custom Caddy build (ClouDNS DNS-01 plugin) fronting the
+  portal with real TLS; see `infra/deploy/README.md` step 6.
 - `docker-compose.yml` — local Postgres for development.
 - `docker-compose.prod.yml` — production stack (Postgres + the portal
   container) for the rack VM; see `infra/deploy/README.md`.

@@ -1,0 +1,16 @@
+# {$PORTAL_DOMAIN} comes from the caddy service's environment in
+# docker-compose.prod.yml (sourced from .env). `dns cloudns` picks up
+# CLOUDNS_AUTH_ID / CLOUDNS_SUB_AUTH_ID / CLOUDNS_AUTH_PASSWORD from the
+# environment automatically — no credentials live in this file.
+#
+# DNS-01 means Let's Encrypt validates ownership through a DNS record
+# ClouDNS's API lets Caddy create/remove itself — this VM never needs to
+# be reachable from the public internet for certs to issue or renew.
+
+{$PORTAL_DOMAIN} {
+	tls {
+		dns cloudns
+	}
+
+	reverse_proxy portal:3000
+}

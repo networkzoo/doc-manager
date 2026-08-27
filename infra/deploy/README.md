@@ -89,6 +89,52 @@ curl http://localhost:3000/api/health
 If that curl comes back clean, the plumbing works: container boots,
 reaches Postgres, serves requests.
 
+## 6. TLS via Caddy + ClouDNS
+
+Entra ID and Google both require an HTTPS redirect URI — even for
+LAN-only access, that means real TLS, not just skipping it because
+nothing's internet-facing. [`infra/caddy`](../caddy) is a custom Caddy
+build ([Dockerfile](../caddy/Dockerfile)) with the
+[ClouDNS DNS-01 plugin](https://github.com/caddy-dns/cloudns) baked in —
+it proves domain ownership through a DNS record it creates/removes
+itself via the ClouDNS API, so this VM never needs to be reachable from
+the public internet for a certificate to issue or renew.
+
+**DNS:** in your ClouDNS control panel, point your chosen hostname (e.g.
+`portal.yourdomain.com`) at this VM's LAN IP — an internal-only A record
+is fine, nothing needs to resolve publicly.
+
+**Credentials:** ClouDNS control panel → API Access (a full account) or
+→ Sub-Users (a scoped sub-account) → generate a password. Use one or the
+other, not both.
+
+**Fill in `.env`** (added to `.env.production.example`):
+```
+PORTAL_DOMAIN=portal.yourdomain.com
+CLOUDNS_AUTH_ID=            # OR CLOUDNS_SUB_AUTH_ID, whichever you generated
+CLOUDNS_AUTH_PASSWORD=
+```
+
+**Open the firewall for it** — `ufw` currently only allows 22 and 3000:
+```bash
+sudo ufw allow 443/tcp
+sudo ufw allow 80/tcp   # Caddy's HTTP->HTTPS redirect
+```
+
+**Bring Caddy up:**
+```bash
+docker compose -f docker-compose.prod.yml up -d --build caddy
+docker compose -f docker-compose.prod.yml logs -f caddy
+```
+Watch for it obtaining a certificate (look for `certificate obtained
+successfully` in the logs, not a repeating retry loop). Then, from
+anywhere that resolves `PORTAL_DOMAIN` (your LAN, or your Netbird mesh):
+```bash
+curl https://portal.yourdomain.com/api/health
+```
+should return the same clean response as the direct `:3000` check, but
+now over a real, valid certificate.
+
 ## What still needs real values
 
 **Sign-in will not work yet, and that's expected at this stage** — not a
@@ -100,16 +146,15 @@ proves the deploy works independent of all that.
 
 Getting real sign-in working needs, in order:
 
-1. **A stable public URL** for this portal (domain + TLS via the Sophos
-   WAF or a Cloudflare proxy — docs/PLAN.md "Hosting & data residency").
-   OAuth redirect URIs have to point somewhere real.
-2. **An Entra ID app registration** (Azure Portal → App registrations →
+1. **An Entra ID app registration** (Azure Portal → App registrations →
    New → multitenant → add `openid profile email User.Read` API
    permissions → create a client secret → redirect URI
-   `https://<your-domain>/api/auth/callback/microsoft-entra-id`) and/or a
-   **Google OAuth client** (similar, via Google Cloud Console) — their
-   IDs/secrets go into `.env`.
-3. **A `tenant_sso_domains` row per real firm** before anyone there can
+   `https://<PORTAL_DOMAIN>/api/auth/callback/microsoft-entra-id`) and/or
+   a **Google OAuth client** (similar, via Google Cloud Console, redirect
+   URI `https://<PORTAL_DOMAIN>/api/auth/callback/google`) — their
+   IDs/secrets go into `.env`, then `docker compose -f
+   docker-compose.prod.yml up -d --build portal` to pick them up.
+2. **A `tenant_sso_domains` row per real firm** before anyone there can
    sign in — the design deliberately rejects unrecognized domains rather
    than auto-provisioning a tenant (docs/PLAN.md "SSO"). There's no admin
    UI for this yet (Phase 2), so today it's a manual insert:
@@ -132,9 +177,6 @@ it so `/matters` failing to load isn't mistaken for something broken.
   deliberately left unjoined. `netbird up --setup-key <key>` once you
   have one from your management console (docs/PLAN.md: admin access
   only, never the client-facing portal traffic).
-- **Firewall tightening** — `infra/proxmox/cloud-init/user-data.yaml`'s
-  `ufw` rules are still the shipped placeholders; narrow port 3000 to
-  your actual WAF/proxy source once that's finalized.
 - **Backups** — no automated `pg_dump`/WAL archiving yet (docs/PLAN.md
   Phase 6). The `portal_pgdata` Docker volume is durable across container
   restarts but isn't backed up anywhere off this VM.
