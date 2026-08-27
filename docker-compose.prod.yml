@@ -34,11 +34,18 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgres://law_portal:${POSTGRES_PASSWORD}@db:5432/law_portal
       AUTH_SECRET: ${AUTH_SECRET}
-      # Auth.js needs this behind any reverse proxy (Caddy here) — without
-      # it, it can misderive its own canonical URL from internal Docker
-      # request context instead of the real https://${PORTAL_DOMAIN},
-      # which breaks the OAuth redirect. Caddy's reverse_proxy sets
-      # X-Forwarded-* by default, which this setting tells Auth.js to trust.
+      # Explicit and deterministic, rather than relying on Auth.js
+      # inferring the canonical URL from forwarded headers alone — in
+      # practice that inference fell back to http://<HOSTNAME>:<PORT>
+      # (literally http://0.0.0.0:3000 — HOSTNAME=0.0.0.0 in
+      # apps/portal/Dockerfile is correct and necessary for the server to
+      # bind on all interfaces, but the same env var apparently gets
+      # reused as a URL-construction fallback somewhere in the stack).
+      # Pinning AUTH_URL sidesteps that ambiguity entirely.
+      AUTH_URL: https://${PORTAL_DOMAIN}
+      # Still worth keeping alongside AUTH_URL — some Auth.js internals
+      # still consult this when deciding whether to trust forwarded
+      # headers at all, behind any reverse proxy.
       AUTH_TRUST_HOST: "true"
       AUTH_MICROSOFT_ENTRA_ID_ID: ${AUTH_MICROSOFT_ENTRA_ID_ID:-}
       AUTH_MICROSOFT_ENTRA_ID_SECRET: ${AUTH_MICROSOFT_ENTRA_ID_SECRET:-}
