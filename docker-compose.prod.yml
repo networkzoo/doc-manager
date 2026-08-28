@@ -100,7 +100,14 @@ services:
   # anyway). Never published directly — only reachable through Caddy,
   # same as `portal`.
   minio:
-    image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+    # -cpuv1: MinIO's images have required x86-64-v2 CPU features since
+    # RELEASE.2023-11-01T01-57-10Z (RHEL9-minimal base) and fail with
+    # "Fatal glibc error: CPU does not support x86-64-v2" otherwise — this
+    # VM's Proxmox CPU type (kvm64, the conservative live-migration-safe
+    # default) doesn't expose them. The -cpuv1 tag is MinIO's own build
+    # for exactly this case, cheaper than changing the VM's CPU type
+    # (which needs a full power-cycle, not just a reboot).
+    image: minio/minio:RELEASE.2025-04-08T15-41-24Z-cpuv1
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
