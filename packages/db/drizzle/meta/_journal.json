@@ -36,6 +36,20 @@
       "when": 1787722415171,
       "tag": "0004_dry_paibok",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787858546378,
+      "tag": "0005_open_blazing_skull",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787858570225,
+      "tag": "0006_connector_jobs_rls",
+      "breakpoints": true
     }
   ]
 }

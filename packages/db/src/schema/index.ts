@@ -6,6 +6,7 @@ export * from "./documents";
 export * from "./time";
 export * from "./conflicts";
 export * from "./connectors";
+export * from "./connector_jobs";
 export * from "./audit";
 export * from "./reference";
 export * from "./sso";

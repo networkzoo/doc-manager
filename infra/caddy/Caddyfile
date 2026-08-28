@@ -23,3 +23,18 @@
 
 	reverse_proxy portal:3000
 }
+
+# Self-hosted relay store (docs/PLAN.md "Tunnel-free file flow") — MinIO's
+# S3 API only, not its console (port 9001, deliberately not exposed here).
+# LAN-only for now (an internal-only A record, same as {$PORTAL_DOMAIN}),
+# same as the portal — goes properly internet-facing only once a real
+# remote client's connector needs to reach it.
+{$RELAY_DOMAIN} {
+	tls {
+		dns cloudns
+		propagation_delay 45s
+		propagation_timeout 5m
+	}
+
+	reverse_proxy minio:9000
+}
