@@ -123,6 +123,37 @@ services:
       timeout: 5s
       retries: 10
 
+  # Nothing else deletes relay blobs — relay.ts's presign TTL only limits
+  # how long a URL is *usable*, not how long the underlying object lives.
+  # docs/PLAN.md targets a 1h blob lifetime, but S3/MinIO bucket lifecycle
+  # rules are day-granularity only, so an actual 1h TTL needs a sweep like
+  # this rather than a built-in ILM rule. Reuses the minio image (already
+  # pulled, already -cpuv1-patched) purely for its bundled `mc` binary —
+  # it never runs `minio server`. Uses relay-cleanup, a separate scoped
+  # key (list+delete only, no put/get — see infra/deploy/README.md
+  # "Relay store: MinIO") so a compromised app credential (relay-app,
+  # put/get only) still can't touch this, and vice versa.
+  relay-cleanup:
+    image: minio/minio:RELEASE.2025-04-08T15-41-24Z-cpuv1
+    restart: unless-stopped
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mc alias set relay http://minio:9000 "$$RELAY_CLEANUP_ACCESS_KEY_ID" "$$RELAY_CLEANUP_SECRET_ACCESS_KEY"
+        while true; do
+          mc rm --recursive --force --older-than 1h "relay/$$RELAY_BUCKET/" || true
+          sleep 600
+        done
+    environment:
+      RELAY_CLEANUP_ACCESS_KEY_ID: ${RELAY_CLEANUP_ACCESS_KEY_ID}
+      RELAY_CLEANUP_SECRET_ACCESS_KEY: ${RELAY_CLEANUP_SECRET_ACCESS_KEY}
+      RELAY_BUCKET: ${RELAY_BUCKET}
+    networks:
+      - internal
+
 networks:
   internal:
 

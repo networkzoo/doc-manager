@@ -150,6 +150,133 @@ curl https://portal.yourdomain.com/api/health
 should return the same clean response as the direct `:3000` check, but
 now over a real, valid certificate.
 
+## 7. Relay store: MinIO
+
+Self-hosted S3-compatible relay for the encrypted file flow (docs/PLAN.md
+"Tunnel-free file flow" + Risk R1 — this is what replaced the plan's
+original Wasabi/S3 choice: no added cost given existing rack capacity,
+and it sidesteps Wasabi's minimum-storage-duration and egress-fair-use
+terms, neither of which fits a relay's near-zero-storage/high-egress
+pattern).
+
+**Generate root credentials** (used once, below — the app itself never
+uses these):
+```bash
+openssl rand -base64 24   # -> MINIO_ROOT_USER, or just pick a name
+openssl rand -base64 24   # -> MINIO_ROOT_PASSWORD
+```
+
+**Fill in `.env`:**
+```
+RELAY_DOMAIN=relay.yourdomain.com   # a second hostname, same DNS pattern as PORTAL_DOMAIN
+MINIO_ROOT_USER=
+MINIO_ROOT_PASSWORD=
+RELAY_BUCKET=law-portal-relay
+```
+
+**Bring MinIO up:**
+```bash
+docker compose -f docker-compose.prod.yml up -d minio
+```
+
+If it crash-loops with `Fatal glibc error: CPU does not support
+x86-64-v2` — common on Proxmox VMs using the default `kvm64` CPU type —
+switch the image tag in `docker-compose.prod.yml` to the same release
+with a `-cpuv1` suffix (MinIO's own build for older CPUs) rather than
+changing the VM's CPU type, which needs a full power-cycle.
+
+**Create the bucket and two scoped keys** — never hand the app root
+credentials. Two separate keys, not one, because the app and the cleanup
+sweep (below) need opposite permissions and neither should be able to do
+the other's job:
+```bash
+docker compose -f docker-compose.prod.yml exec minio sh
+# inside the container:
+mc alias set local http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"
+mc mb --ignore-existing local/law-portal-relay
+
+# relay-app: put+get only (what apps/portal/src/lib/relay.ts presigns for)
+cat > /tmp/relay-app-policy.json <<'EOF'
+{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:PutObject","s3:GetObject"],"Resource":["arn:aws:s3:::law-portal-relay/*"]}]}
+EOF
+mc admin policy create local relay-app-policy /tmp/relay-app-policy.json
+mc admin user add local relay-app "$(openssl rand -base64 24 | tr -d '=\n')"   # copy the secret you passed in — shown nowhere else
+mc admin policy attach local relay-app-policy --user relay-app
+
+# relay-cleanup: list+delete only (what the sweep service below uses)
+cat > /tmp/relay-cleanup-policy.json <<'EOF'
+{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":["arn:aws:s3:::law-portal-relay"]},{"Effect":"Allow","Action":["s3:DeleteObject"],"Resource":["arn:aws:s3:::law-portal-relay/*"]}]}
+EOF
+mc admin policy create local relay-cleanup-policy /tmp/relay-cleanup-policy.json
+mc admin user add local relay-cleanup "$(openssl rand -base64 24 | tr -d '=\n')"   # again, copy it — shown nowhere else
+mc admin policy attach local relay-cleanup-policy --user relay-cleanup
+exit
+```
+
+**Fill in `.env`** with the four keys from above:
+```
+RELAY_ACCESS_KEY_ID=relay-app
+RELAY_SECRET_ACCESS_KEY=
+RELAY_CLEANUP_ACCESS_KEY_ID=relay-cleanup
+RELAY_CLEANUP_SECRET_ACCESS_KEY=
+```
+
+**Point `RELAY_DOMAIN` at this VM** the same way as `PORTAL_DOMAIN` (an
+internal-only A record is fine), then bring up Caddy and the cleanup
+sweep together — Caddy needs rebuilding, not just recreating, since the
+relay site block is baked into its image at build time:
+```bash
+docker compose -f docker-compose.prod.yml up -d --build caddy relay-cleanup
+docker compose -f docker-compose.prod.yml logs -f caddy   # watch for "certificate obtained successfully"
+curl https://relay.yourdomain.com/minio/health/live
+```
+
+**Blob lifetime:** `relay.ts`'s presign TTL (1h) only limits how long a
+*URL* is usable — it doesn't delete the underlying object. The
+`relay-cleanup` service handles that instead of a bucket lifecycle rule,
+because S3/MinIO lifecycle expiration is day-granularity only and can't
+express docs/PLAN.md's 1h target; it's a small loop (bundled in the
+`minio` image, reused only for its `mc` binary) that runs `mc rm
+--recursive --older-than 1h` against the bucket every 10 minutes using
+the list+delete-only key — worst case, a blob outlives its 1h target by
+under 10 minutes.
+
+## 8. Enrolling a connector
+
+One `connectors` row per on-prem installation, created via a script, not
+an admin UI (none exists yet — see "What still needs real values"'s
+tenant-onboarding gap, same shape of problem). Only the token's SHA-256
+hash is ever stored (`packages/db/src/schema/connectors.ts`); the raw
+token below is shown exactly once — it's the connector's only credential
+and there's no rotation flow yet, so store it somewhere real (password
+manager, not a chat log):
+
+```bash
+set -a; source .env; set +a
+export DATABASE_URL="postgres://law_portal:${POSTGRES_PASSWORD}@localhost:5432/law_portal"
+pnpm --filter @law-portal/db enroll-connector \
+  --tenant-slug smith-law \
+  --site-name "Main Office" \
+  --document-root '\\FILESRV\ClientDocs'
+```
+
+Run the connector binary (built from `apps/connector`, targeting the
+firm's actual file server — see `apps/connector/README.md`) with the
+`connector-id` and `token` it prints:
+```bash
+connector -portal https://portal.yourdomain.com \
+  -connector-id <connector-id> -token <token> \
+  -document-root '\\FILESRV\ClientDocs'
+```
+
+To revoke one, hand-set `revoked_at` (no separate revocation command
+yet):
+```bash
+docker compose -f docker-compose.prod.yml exec db \
+  psql -U law_portal -d law_portal -c \
+  "update connectors set revoked_at = now() where id = '<connector-id>';"
+```
+
 ## What still needs real values
 
 **Sign-in will not work yet, and that's expected at this stage** — not a
