@@ -32,7 +32,15 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
+      # law_portal — owner/superuser role. Only rawSql/dbOwner
+      # (packages/db/src/client.ts) may use this; withTenant()/`db` uses
+      # APP_DATABASE_URL below instead, so RLS is actually enforced for
+      # every ordinary request.
       DATABASE_URL: postgres://law_portal:${POSTGRES_PASSWORD}@db:5432/law_portal
+      # law_portal_app — non-superuser, non-owner role (created by
+      # drizzle/0001_rls_policies.sql) RLS is enforced for. See
+      # infra/deploy/README.md "Least-privilege app database role".
+      APP_DATABASE_URL: ${APP_DATABASE_URL}
       AUTH_SECRET: ${AUTH_SECRET}
       # Explicit and deterministic, rather than relying on Auth.js
       # inferring the canonical URL from forwarded headers alone — in

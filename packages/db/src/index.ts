@@ -1,2 +1,2 @@
 export * as schema from "./schema";
-export { db, withTenant, rawSql } from "./client";
+export { db, dbOwner, withTenant, rawSql } from "./client";

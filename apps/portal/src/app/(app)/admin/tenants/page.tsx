@@ -1,16 +1,16 @@
 import { notFound, redirect } from "next/navigation";
 import { desc, eq } from "drizzle-orm";
-import { db, schema } from "@law-portal/db";
+import { dbOwner, schema } from "@law-portal/db";
 import { requireSession } from "@/lib/session";
 import { isPlatformAdmin } from "@/lib/platformAdmin";
 
 // Tenant onboarding — creating a new firm on the platform, not managing an
-// existing one. Deliberately outside RLS: tenants/tenant_sso_domains have
-// no tenant_id and no RLS policy (see their own schema comments), so this
-// uses `db` directly rather than withTenant(), same as
-// apps/portal/src/lib/auth.ts's findTenantForEmail. Gated by
-// isPlatformAdmin, not the tenant-scoped "admin" role — see that
-// function's comment for why those are different things.
+// existing one. Deliberately outside RLS: `tenants` has RLS enabled with
+// NO policy at all (no tenant_id column to scope by), so it's reachable
+// only via dbOwner, not the RLS-restricted `db` withTenant() uses — see
+// packages/db/src/client.ts. Gated by isPlatformAdmin, not the
+// tenant-scoped "admin" role — see that function's comment for why those
+// are different things.
 //
 // No self-serve signup here on purpose (docs/PLAN.md "SSO": never
 // auto-create a tenant from an unrecognized login) — this is the
@@ -34,7 +34,7 @@ async function createTenant(formData: FormData) {
   }
 
   try {
-    await db.transaction(async (tx) => {
+    await dbOwner.transaction(async (tx) => {
       const [tenant] = await tx.insert(schema.tenants).values({ name, slug }).returning({ id: schema.tenants.id });
       await tx.insert(schema.tenantSsoDomains).values({
         tenantId: tenant.id,
@@ -67,7 +67,7 @@ export default async function TenantsAdminPage({
 
   const { created, error } = await searchParams;
 
-  const tenants = await db
+  const tenants = await dbOwner
     .select({
       id: schema.tenants.id,
       name: schema.tenants.name,

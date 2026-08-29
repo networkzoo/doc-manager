@@ -92,6 +92,47 @@ pnpm db:migrate
 tenant, a sample matter) meant for local development, not a real
 deployment.
 
+## 4a. Least-privilege app database role — do this before going further
+
+`drizzle/0001_rls_policies.sql` (just applied above) creates a second
+Postgres role, `law_portal_app`, that RLS is actually enforced for — the
+whole tenant-isolation design (docs/PLAN.md "Permissions Model": "RLS
+enforced at the database layer, not only in application code") depends
+on the app connecting as this role, **not** `law_portal`. `law_portal` is
+a Postgres superuser (that's simply what `POSTGRES_USER` becomes in the
+official `postgres` image), and RLS **never** applies to a superuser
+connection, regardless of any policy or `FORCE ROW LEVEL SECURITY` — so
+if the app ever connects as `law_portal` for ordinary requests, every
+tenant_isolation policy in the schema is silently a no-op and one
+tenant's data is fully readable by another. This happened in production
+once already (see `packages/db/src/client.ts`'s history) before a second
+real tenant existed to reveal it — treat this step as non-optional, not
+a hardening nice-to-have.
+
+The migration creates `law_portal_app` with a literal placeholder
+password (`change_me_in_deploy_secrets`, fine for local dev, **not** for
+anything real) — rotate it now:
+
+```bash
+docker compose -f docker-compose.prod.yml exec db \
+  psql -U law_portal -d law_portal -c \
+  "alter role law_portal_app with password '$(openssl rand -base64 24 | tr -d '=\n')';"
+```
+
+Copy the password it just set (re-run `\password law_portal_app`-style
+generation and note it down — it isn't echoed back) into `.env`:
+```
+APP_DATABASE_URL=postgres://law_portal_app:<that password>@db:5432/law_portal
+```
+
+**Verify RLS is actually enforced for this role** before trusting it —
+this should return zero rows, not an error and not real data:
+```bash
+docker compose -f docker-compose.prod.yml exec db \
+  psql "postgresql://law_portal_app:<that password>@localhost:5432/law_portal" -c \
+  "begin; select set_config('app.tenant_id', gen_random_uuid()::text, true); select count(*) from matters; commit;"
+```
+
 ## 5. Bring up the app
 
 ```bash

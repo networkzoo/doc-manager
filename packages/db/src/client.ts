@@ -4,25 +4,43 @@ import { sql } from "drizzle-orm";
 import * as schema from "./schema";
 
 /**
- * The app connects as a non-superuser role with RLS enforced (see
- * drizzle/0001_rls_policies.sql). Every policy checks
- * current_setting('app.tenant_id') against each row's tenant_id, so a
- * request with no tenant context set sees zero rows in every tenant-scoped
- * table rather than everything — fail closed, not open.
+ * TWO connections, deliberately different roles — this split is what
+ * drizzle/0001_rls_policies.sql's law_portal_app role exists for, and it
+ * was NOT actually being used until 2026-08-29: both `db` and `rawSql`
+ * previously shared one superuser connection (DATABASE_URL), which
+ * bypasses RLS entirely regardless of any policy — a superuser is exempt
+ * from RLS full stop, FORCE ROW LEVEL SECURITY or not. That silently
+ * defeated every tenant_isolation policy in the schema (discovered when a
+ * second real tenant could see the first tenant's matter). See
+ * infra/deploy/README.md "Least-privilege app database role" for the
+ * rotation this required.
  *
- * `withTenant` is the ONLY sanctioned way application code should touch
- * tenant-scoped tables. It opens a transaction, sets the session-local
- * GUC, runs the callback, and lets the transaction end (committing or
- * rolling back) before the setting can leak to a pooled connection.
+ * `db` — connects as law_portal_app (APP_DATABASE_URL): NOT a superuser,
+ * NOT the table owner, so RLS is actually enforced. This is what
+ * `withTenant` uses, and what essentially all application code should use.
+ *
+ * `dbOwner` — connects as the owner/superuser role (DATABASE_URL, same
+ * connection `rawSql` uses): bypasses RLS entirely. Reserved for the
+ * handful of genuinely cross-tenant paths that need it — creating a new
+ * tenant (apps/portal/src/app/(app)/admin/tenants/page.tsx) chief among
+ * them, since `tenants` has RLS enabled with no policy at all (by design
+ * — it has no tenant_id column to scope by) and so is otherwise
+ * unreachable to a non-owner role.
  */
 
-const connectionString =
+const appConnectionString =
+  process.env.APP_DATABASE_URL ??
+  "postgres://law_portal_app:change_me_in_deploy_secrets@localhost:5432/law_portal";
+
+const ownerConnectionString =
   process.env.DATABASE_URL ??
   "postgres://law_portal:dev_only_password@localhost:5432/law_portal";
 
-const queryClient = postgres(connectionString, { max: 10 });
+const appQueryClient = postgres(appConnectionString, { max: 10 });
+const queryClient = postgres(ownerConnectionString, { max: 10 });
 
-export const db = drizzle(queryClient, { schema });
+export const db = drizzle(appQueryClient, { schema });
+export const dbOwner = drizzle(queryClient, { schema });
 
 export async function withTenant<T>(
   tenantId: string,
