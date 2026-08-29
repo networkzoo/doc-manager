@@ -298,17 +298,13 @@ Getting real sign-in working needs, in order:
    docker-compose.prod.yml up -d --build portal` to pick them up.
 2. **A `tenant_sso_domains` row per real firm** before anyone there can
    sign in — the design deliberately rejects unrecognized domains rather
-   than auto-provisioning a tenant (docs/PLAN.md "SSO"). There's no admin
-   UI for this yet (Phase 2), so today it's a manual insert:
-   ```bash
-   docker compose -f docker-compose.prod.yml exec db \
-     psql -U law_portal -d law_portal -c \
-     "insert into tenants (name, slug) values ('Smith Law LLP', 'smith-law') returning id;"
-   # then, using the returned id:
-   docker compose -f docker-compose.prod.yml exec db \
-     psql -U law_portal -d law_portal -c \
-     "insert into tenant_sso_domains (tenant_id, email_domain) values ('<id>', 'smithlawllp.ca');"
-   ```
+   than auto-provisioning a tenant (docs/PLAN.md "SSO"). Register one at
+   `/admin/tenants` (creates both the `tenants` and `tenant_sso_domains`
+   rows together) — visible only to emails listed in
+   `PLATFORM_ADMIN_EMAILS` (set that in `.env` first, then `docker compose
+   -f docker-compose.prod.yml up -d --build portal` to pick it up).
+   Deliberately separate from a tenant's own "admin" role — see
+   `apps/portal/src/lib/platformAdmin.ts`.
 
 None of that is needed to confirm today's deploy worked — just flagging
 it so `/matters` failing to load isn't mistaken for something broken.

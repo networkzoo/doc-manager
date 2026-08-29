@@ -51,6 +51,7 @@ services:
       AUTH_MICROSOFT_ENTRA_ID_SECRET: ${AUTH_MICROSOFT_ENTRA_ID_SECRET:-}
       AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID:-}
       AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET:-}
+      PLATFORM_ADMIN_EMAILS: ${PLATFORM_ADMIN_EMAILS:-}
       # Deliberately the PUBLIC endpoint (through Caddy), not the internal
       # minio:9000 docker-network address — presigned URLs get handed to
       # the browser and to connectors on other networks entirely, neither

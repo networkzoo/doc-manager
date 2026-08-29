@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
+import { isPlatformAdmin } from "@/lib/platformAdmin";
 
 // Every route under this layout is session-gated, so it must never be
 // statically prerendered at build time (Next.js otherwise tries to,
@@ -30,6 +31,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <Link href="/matters">Matters</Link>
           <Link href="/search">Search</Link>
           <Link href="/time">Time</Link>
+          {isPlatformAdmin(session.email) && <Link href="/admin/tenants">Tenants</Link>}
         </nav>
         <span className="text-sm text-zinc-500">{session.email}</span>
       </header>
