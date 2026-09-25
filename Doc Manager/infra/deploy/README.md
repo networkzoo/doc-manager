@@ -284,6 +284,17 @@ under 10 minutes.
 
 ## 8. Enrolling a connector
 
+**Network path:** where the perimeter firewall won't open 80/443 to a
+remote site (e.g. policy reasons, or those ports already used for
+something else), `docker-compose.prod.yml` also publishes the caddy
+container's port 443 on host port `26443` — NAT that one port through to
+the VM instead, and point the connector at
+`https://<PORTAL_DOMAIN>:26443`. No Caddyfile change needed: TLS/SNI
+routing works the same regardless of which port the connection arrives
+on, and since caddy also serves `RELAY_DOMAIN` on the same internal port,
+this single opened port covers both the portal and relay traffic a
+connector needs.
+
 One `connectors` row per on-prem installation, created via a script, not
 an admin UI (none exists yet — see "What still needs real values"'s
 tenant-onboarding gap, same shape of problem). Only the token's SHA-256

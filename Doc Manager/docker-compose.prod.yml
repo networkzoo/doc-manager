@@ -93,6 +93,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "26443:443" # NAT'd through the perimeter firewall for connector/relay traffic — 80/443 stay closed there (see infra/deploy/README.md "Enrolling a connector")
     volumes:
       # Cert storage — must persist across restarts, or Caddy re-requests
       # from Let's Encrypt every time and risks hitting rate limits.
