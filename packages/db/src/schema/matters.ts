@@ -22,12 +22,18 @@ export const matters = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
-    clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "restrict" }),
+    // Nullable: bulk-imported matters (e.g. a legacy folder tree with
+    // thousands of pre-existing files) often can't populate a real
+    // client/lawyer at import time — see docs/PLAN.md "SMB Reconciliation"
+    // and the bulk-import work it feeds. Not every tenant needs this
+    // looseness, but the schema has to allow it for the ones that do;
+    // firms that want it enforced can do so at the application layer.
+    clientId: uuid("client_id").references(() => clients.id, { onDelete: "restrict" }),
     // Configurable per tenant, e.g. CLIENT-YYYY-NNN — formatting lives in
     // application code, this column just holds the rendered, unique value.
     matterNumber: text("matter_number").notNull(),
     practiceArea: text("practice_area").notNull(),
-    responsibleLawyerId: uuid("responsible_lawyer_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    responsibleLawyerId: uuid("responsible_lawyer_id").references(() => users.id, { onDelete: "restrict" }),
     status: matterStatusEnum("status").notNull().default("open"),
     openedAt: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
     closedAt: timestamp("closed_at", { withTimezone: true }),

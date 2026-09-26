@@ -50,6 +50,13 @@
       "when": 1787858570225,
       "tag": "0006_connector_jobs_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790400677152,
+      "tag": "0007_late_white_tiger",
+      "breakpoints": true
     }
   ]
 }
