@@ -51,7 +51,11 @@ function parseArgs(argv: string[]): Record<string, string> {
 type ManifestEntry = { relPath: string; isDir: boolean };
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
+  // pnpm's `<script> -- <args>` forwarding doesn't always strip the `--`
+  // itself before handing argv to the script — tolerate a stray leading
+  // one rather than mis-parsing every flag after it.
+  const rawArgs = process.argv.slice(2);
+  const args = parseArgs(rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs);
   const tenantSlug = args["tenant-slug"];
   const jobId = args["job-id"];
   const smbPrefix = args["smb-prefix"];
