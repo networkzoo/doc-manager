@@ -57,6 +57,28 @@ func TestScanSkipsVersionSidecarDirectory(t *testing.T) {
 	}
 }
 
+func TestListTopLevelDirsIgnoresFilesAndNested(t *testing.T) {
+	root := t.TempDir()
+
+	writeFile(t, filepath.Join(root, "34546", "file contents.pdf"), "contents")
+	writeFile(t, filepath.Join(root, "34546", "Correspondence", "letter.txt"), "dear client")
+	writeFile(t, filepath.Join(root, "32860", "deed.pdf"), "deed")
+	writeFile(t, filepath.Join(root, "readme.txt"), "not a matter folder")
+
+	names, errs := ListTopLevelDirs(root)
+	if len(errs) != 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+
+	got := map[string]bool{}
+	for _, n := range names {
+		got[n] = true
+	}
+	if len(got) != 2 || !got["34546"] || !got["32860"] {
+		t.Fatalf("expected exactly {34546, 32860}, got %v", names)
+	}
+}
+
 func writeFile(t *testing.T, path, contents string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

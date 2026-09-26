@@ -43,8 +43,27 @@ export const ScanReconcileJobSchema = z.object({
   type: z.literal("scan_reconcile"),
   jobId: z.string().uuid(),
   matterSmbPath: z.string().optional(), // omitted = full document root scan
+  // true: list immediate subdirectory names only, no recursion or hashing
+  // — cheap enough to run against the document root itself even when it
+  // holds tens of thousands of matter folders (e.g. a legacy bulk-import
+  // source). false/omitted: the normal full recursive hash-everything
+  // scan, meant to be scoped to one matter's smbPath so the resulting
+  // manifest stays a sane size.
+  topLevelOnly: z.boolean().optional(),
 });
 export type ScanReconcileJob = z.infer<typeof ScanReconcileJobSchema>;
+
+// One entry per file (or, when the job ran with topLevelOnly, per
+// directory) found during a scan_reconcile job. sizeBytes/contentHash are
+// absent for directory entries — there's nothing to hash.
+export const ManifestEntrySchema = z.object({
+  relPath: z.string(),
+  isDir: z.boolean(),
+  sizeBytes: z.number().int().optional(),
+  contentHash: z.string().optional(),
+  modifiedAt: z.string().optional(), // RFC3339, absent for directory entries
+});
+export type ManifestEntry = z.infer<typeof ManifestEntrySchema>;
 
 export const ConnectorJobSchema = z.discriminatedUnion("type", [
   StageDownloadJobSchema,
@@ -62,6 +81,12 @@ export const JobResultSchema = z.object({
   contentKeyB64: z.string().optional(),
   contentHash: z.string().optional(), // sha256 of plaintext, for version tracking
   sizeBytes: z.number().int().optional(),
+  // Present on scan_reconcile success — the actual scan output, not just a
+  // count. Left unpaginated for now: chunking only matters once a single
+  // scan_reconcile's scope (the whole document root, or one huge matter
+  // folder) produces a manifest too large for one HTTP request to carry —
+  // revisit if that turns out to be real rather than hypothetical.
+  manifest: z.array(ManifestEntrySchema).optional(),
   error: z.string().optional(),
 });
 export type JobResult = z.infer<typeof JobResultSchema>;

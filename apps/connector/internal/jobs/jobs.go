@@ -5,7 +5,10 @@
 // change them in the same commit. See docs/PLAN.md "Tunnel-free file flow".
 package jobs
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 type JobType string
 
@@ -49,6 +52,21 @@ type ScanReconcileJob struct {
 	Type          JobType `json:"type"`
 	JobID         string  `json:"jobId"`
 	MatterSMBPath string  `json:"matterSmbPath,omitempty"` // empty = full document root scan
+	// true: list immediate subdirectory names only, no recursion or
+	// hashing. false: the normal full recursive scan — see
+	// packages/shared/src/jobs.ts's ScanReconcileJobSchema for why.
+	TopLevelOnly bool `json:"topLevelOnly,omitempty"`
+}
+
+// ManifestEntry is one file (or, for a topLevelOnly scan, one directory)
+// found during a scan_reconcile job. SizeBytes/ContentHash are zero/empty
+// for directory entries.
+type ManifestEntry struct {
+	RelPath     string     `json:"relPath"`
+	IsDir       bool       `json:"isDir"`
+	SizeBytes   int64      `json:"sizeBytes,omitempty"`
+	ContentHash string     `json:"contentHash,omitempty"`
+	ModifiedAt  *time.Time `json:"modifiedAt,omitempty"` // pointer so a zero value for a directory entry is actually omitted, not encoded as 0001-01-01
 }
 
 // Result is reported back to the portal for every job, success or failure.
@@ -62,7 +80,11 @@ type Result struct {
 	ContentKeyB64 string `json:"contentKeyB64,omitempty"`
 	ContentHash   string `json:"contentHash,omitempty"`
 	SizeBytes     int64  `json:"sizeBytes,omitempty"`
-	Error         string `json:"error,omitempty"`
+	// Present on scan_reconcile success — see ManifestEntry and
+	// packages/shared/src/jobs.ts's JobResultSchema for the unpaginated-
+	// for-now rationale.
+	Manifest []ManifestEntry `json:"manifest,omitempty"`
+	Error    string          `json:"error,omitempty"`
 }
 
 func Failure(jobID string, err error) Result {

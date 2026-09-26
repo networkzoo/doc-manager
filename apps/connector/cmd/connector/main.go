@@ -258,14 +258,36 @@ func handleScanReconcile(cfg Config, job jobs.ScanReconcileJob) jobs.Result {
 		root = filepath.Join(cfg.DocumentRoot, job.MatterSMBPath)
 	}
 
+	if job.TopLevelOnly {
+		names, errs := listTopLevelDirs(root)
+		for _, e := range errs {
+			log.Printf("scan_reconcile warning: %v", e)
+		}
+		log.Printf("scan_reconcile: %d top-level directories under %s (%d warnings)", len(names), root, len(errs))
+
+		manifest := make([]jobs.ManifestEntry, len(names))
+		for i, name := range names {
+			manifest[i] = jobs.ManifestEntry{RelPath: name, IsDir: true}
+		}
+		return jobs.Result{JobID: job.JobID, Ok: true, SizeBytes: int64(len(manifest)), Manifest: manifest}
+	}
+
 	records, errs := scanRoot(root)
 	for _, e := range errs {
 		log.Printf("scan_reconcile warning: %v", e)
 	}
 	log.Printf("scan_reconcile: %d files scanned under %s (%d warnings)", len(records), root, len(errs))
 
-	// Reporting the full inventory back to the portal for diffing against
-	// its own record is a follow-up — see docs/PLAN.md "SMB
-	// Reconciliation". For now this proves the scan itself runs cleanly.
-	return jobs.Result{JobID: job.JobID, Ok: true, SizeBytes: int64(len(records))}
+	manifest := make([]jobs.ManifestEntry, len(records))
+	for i, r := range records {
+		modifiedAt := r.ModifiedAt
+		manifest[i] = jobs.ManifestEntry{
+			RelPath:     r.RelPath,
+			IsDir:       false,
+			SizeBytes:   r.SizeBytes,
+			ContentHash: r.SHA256Hex,
+			ModifiedAt:  &modifiedAt,
+		}
+	}
+	return jobs.Result{JobID: job.JobID, Ok: true, SizeBytes: int64(len(manifest)), Manifest: manifest}
 }

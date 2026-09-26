@@ -59,3 +59,7 @@ func writeFileAtomic(path string, data []byte) error {
 func scanRoot(root string) ([]scan.FileRecord, []error) {
 	return scan.Scan(root)
 }
+
+func listTopLevelDirs(root string) ([]string, []error) {
+	return scan.ListTopLevelDirs(root)
+}

@@ -93,6 +93,29 @@ func Scan(root string) ([]FileRecord, []error) {
 	return records, errs
 }
 
+// ListTopLevelDirs returns the names of root's immediate subdirectories,
+// non-recursively — no hashing, no descending further. Meant for the
+// "discover what matter folders exist" step of a bulk import, where root
+// itself might hold tens of thousands of entries (e.g. a legacy document
+// tree with one folder per matter): a full Scan() there would walk every
+// file in every matter before returning anything, which is both slow and
+// unnecessary just to learn the folder names.
+func ListTopLevelDirs(root string) ([]string, []error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, []error{fmt.Errorf("scan: reading %s: %w", root, err)}
+	}
+
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		names = append(names, e.Name())
+	}
+	return names, nil
+}
+
 func hashFile(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
