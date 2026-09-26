@@ -124,11 +124,16 @@ async function main() {
 
     const smbPath = `${smbPrefix}\\${entry.relPath}`;
 
+    const customFields = JSON.stringify({
+      importedFrom: "bulk-import-matters",
+      importedFolderDetail: detail || null,
+    });
+
     const [inserted] = await rawSql<{ id: string }[]>`
       insert into matters (tenant_id, matter_number, practice_area, responsible_lawyer_id, smb_path, custom_fields)
       values (
         ${tenant.id}, ${matterNumber}, ${practiceArea}, ${responsibleLawyerId}, ${smbPath},
-        ${rawSql.json({ importedFrom: "bulk-import-matters", importedFolderDetail: detail || null })}
+        ${customFields}::jsonb
       )
       on conflict on constraint matters_tenant_number_unique do nothing
       returning id
